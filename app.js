@@ -1,9 +1,3 @@
-/* =========================================================
-   SIDEQUEST — SHARED WEBSITE JAVASCRIPT
-  
-   ========================================================= */
-
-
 const EVENTS = [
   {
     "id": "tm-917949273",
@@ -637,10 +631,10 @@ const EVENTS = [
   }
 ];
 
-/* DINEPLAN RESTAURANT DIRECTORY — official provider listings, checked November 2026.
-   Curated snapshot; not a live availability API. Bookings open on Dineplan.
-   Photos from verified URLs or the provided Dineplan screenshots.
-   Some listings still use original labelled artwork where a matching photo could not be verified. */
+ 
+
+
+
 const RESTAURANTS = [
   {
     "id": "dp-mikes-heritage-house",
@@ -1202,9 +1196,9 @@ const RESTAURANTS = [
 let allEvents = [...EVENTS];
 let allRestaurants = [...RESTAURANTS];
 
-/* Video files. Each list is tried in order, so a video still plays
-   if you later rename it to the short name. Keep the files in the
-   SAME folder as index.html. */
+ 
+
+
 const HERO_VIDEO_SOURCES = [
   "Sidequest hero section ad (2).mp4",
   "hero-ad.mp4"
@@ -1223,12 +1217,12 @@ function videoSourcesHTML(names) {
     .join("\n          ");
 }
 
-/* Your logo image. Keep website_logo.png in the SAME folder as index.html. */
+ 
 const LOGO_PATH = "./website_logo.png";
 
-/* ---------------------------------------------------------
-   GENERAL HELPERS
---------------------------------------------------------- */
+ 
+
+
 
 const $ = (selector, parent = document) =>
   parent.querySelector(selector);
@@ -1304,7 +1298,7 @@ function setSaved(items) {
 }
 
 function getTickets() {
-  return []; // Old demo ticket records are not real bookings.
+  return [];  
 }
 
 function setTickets(tickets) {
@@ -1319,21 +1313,184 @@ function getItemById(id) {
   return getAllItems().find(item => item.id === id);
 }
 
-/* ---------------------------------------------------------
-   OPTIONAL API CONNECTION
---------------------------------------------------------- */
+ 
+
+
 
 async function loadAPIData() {
-  // Curated verified listings are bundled with SideQuest.
-  // No remote API is called and no demo listings are substituted.
+   
+   
   allEvents = [...EVENTS].filter(event => event.url);
   allRestaurants = [...RESTAURANTS];
 }
 
 
-/* ---------------------------------------------------------
-   NAVIGATION
---------------------------------------------------------- */
+ 
+
+
+
+
+const SQ_WEATHER_CITIES = Object.freeze({
+  Johannesburg: { latitude: -26.2041, longitude: 28.0473 },
+  Pretoria:     { latitude: -25.7479, longitude: 28.2293 },
+  "Cape Town":  { latitude: -33.9249, longitude: 18.4241 },
+  Durban:       { latitude: -29.8587, longitude: 31.0218 }
+});
+const sqWeatherCache = new Map();
+
+function sidequestWeatherDescription(code) {
+  if (code === 0) return ["Clear skies", "☀"];
+  if (code === 1 || code === 2) return ["Partly cloudy", "◐"];
+  if (code === 3) return ["Overcast", "☁"];
+  if (code === 45 || code === 48) return ["Foggy", "≋"];
+  if (code >= 51 && code <= 57) return ["Drizzle", "☂"];
+  if (code >= 61 && code <= 67) return ["Rain", "☂"];
+  if (code >= 71 && code <= 77) return ["Snow", "❄"];
+  if (code >= 80 && code <= 82) return ["Rain showers", "☂"];
+  if (code >= 95) return ["Thunderstorms", "ϟ"];
+  return ["Changing skies", "◐"];
+}
+
+function sidequestWeatherHTML(defaultCity = "Johannesburg", id = "home") {
+  const options = Object.keys(SQ_WEATHER_CITIES).map(city =>
+    `<option value="${city}" ${city === defaultCity ? "selected" : ""}>${city}</option>`
+  ).join("");
+  return `
+    <section class="sq-weather" data-sq-weather="${id}" aria-label="Live South African weather">
+      <div class="sq-weather-heading">
+        <div><span class="sq-weather-kicker">BEFORE YOU GO / LIVE WEATHER</span>
+          <h2>Weather check.</h2></div>
+        <label class="sq-weather-city-label">CITY
+          <select class="sq-weather-city" aria-label="Choose a city for live weather">${options}</select>
+        </label>
+      </div>
+      <div class="sq-weather-main" aria-live="polite" aria-atomic="true">
+        <div class="sq-weather-temp">--°</div>
+        <div class="sq-weather-details"><strong class="sq-weather-condition">Checking the forecast…</strong>
+          <span class="sq-weather-meta">Connecting to Open-Meteo</span></div>
+        <span class="sq-weather-icon" aria-hidden="true">◐</span>
+      </div>
+      <div class="sq-weather-bottom"><span class="sq-weather-note">Current conditions, not a prediction for event day.</span>
+        <span class="sq-weather-credit">DATA: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">OPEN-METEO ↗</a></span></div>
+    </section>`;
+}
+
+async function fetchSidequestWeather(city, signal) {
+  const point = SQ_WEATHER_CITIES[city];
+  if (!point) throw new Error("Please choose a supported city.");
+  const previous = sqWeatherCache.get(city);
+  if (previous && Date.now() - previous.at < 10 * 60 * 1000) return previous.data;
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.search = new URLSearchParams({
+    latitude: String(point.latitude),
+    longitude: String(point.longitude),
+    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m",
+    daily: "precipitation_probability_max",
+    forecast_days: "1",
+    timezone: "Africa/Johannesburg"
+  }).toString();
+  const response = await fetch(url.toString(), { signal, headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`Weather service returned ${response.status}.`);
+  const json = await response.json();
+  const current = json?.current;
+  if (!current || !Number.isFinite(current.temperature_2m)) {
+    throw new Error("Weather data is temporarily unavailable.");
+  }
+  const data = {
+    temperature: current.temperature_2m,
+    feelsLike: current.apparent_temperature,
+    wind: current.wind_speed_10m,
+    humidity: current.relative_humidity_2m,
+    code: current.weather_code,
+    rain: json?.daily?.precipitation_probability_max?.[0],
+    updated: current.time || ""
+  };
+  sqWeatherCache.set(city, { at: Date.now(), data });
+  return data;
+}
+
+function initialiseSidequestWeather() {
+  document.querySelectorAll("[data-sq-weather]").forEach(widget => {
+    if (widget.dataset.weatherReady === "true") return;
+    widget.dataset.weatherReady = "true";
+    const cityControl = widget.querySelector(".sq-weather-city");
+    const temperature = widget.querySelector(".sq-weather-temp");
+    const condition = widget.querySelector(".sq-weather-condition");
+    const meta = widget.querySelector(".sq-weather-meta");
+    const icon = widget.querySelector(".sq-weather-icon");
+    const note = widget.querySelector(".sq-weather-note");
+    let controller;
+
+    const showWeather = async () => {
+      controller?.abort();
+      controller = new AbortController();
+      const requestController = controller;
+      const { signal } = requestController;
+      const city = cityControl.value;
+      widget.classList.add("sq-weather-loading");
+      temperature.textContent = "--°";
+      condition.textContent = `Checking ${city}…`;
+      meta.textContent = "Fetching live conditions";
+      note.textContent = "Current conditions, not a prediction for event day.";
+      const timeout = setTimeout(() => requestController.abort(), 9000);
+      try {
+        const data = await fetchSidequestWeather(city, signal);
+        if (signal.aborted) return;
+        const [description, glyph] = sidequestWeatherDescription(data.code);
+        temperature.textContent = `${Math.round(data.temperature)}°`;
+        condition.textContent = description;
+        icon.textContent = glyph;
+        const details = [
+          Number.isFinite(data.feelsLike) ? `Feels like ${Math.round(data.feelsLike)}°C` : null,
+          Number.isFinite(data.wind) ? `Wind ${Math.round(data.wind)} km/h` : null,
+          Number.isFinite(data.rain) ? `Rain chance today ${Math.round(data.rain)}%` : null
+        ].filter(Boolean);
+        meta.textContent = details.join("  ·  ");
+        note.textContent = `Now in ${city} · Updated from Open-Meteo`;
+        if (window.gsap && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          window.gsap.fromTo([temperature, icon], { y: 7, opacity: .55 },
+            { y: 0, opacity: 1, duration: .35, ease: "power2.out", stagger: .07, overwrite: true });
+        }
+      } catch (error) {
+        if (signal.aborted && cityControl.value !== city) return;
+        temperature.textContent = "--°";
+        condition.textContent = "Weather is unavailable";
+        icon.textContent = "◐";
+        meta.textContent = "The rest of SideQuest is still working.";
+        note.textContent = "Try another city or refresh the page.";
+        console.warn("SideQuest Open-Meteo:", error.message);
+      } finally {
+        clearTimeout(timeout);
+        if (cityControl.value === city) widget.classList.remove("sq-weather-loading");
+      }
+    };
+
+    cityControl.addEventListener("change", () => {
+      if (widget.dataset.sqWeather === "events") {
+        const eventCity = document.getElementById("event-city");
+        if (eventCity && [...eventCity.options].some(option => option.value === cityControl.value)) {
+          eventCity.value = cityControl.value;
+          updateEventResults();
+        }
+      }
+      showWeather();
+    });
+    if (widget.dataset.sqWeather === "events") {
+      const eventCity = document.getElementById("event-city");
+      eventCity?.addEventListener("change", () => {
+        if (SQ_WEATHER_CITIES[eventCity.value] && cityControl.value !== eventCity.value) {
+          cityControl.value = eventCity.value;
+          showWeather();
+        }
+      });
+    }
+    showWeather();
+  });
+}
+
+ 
+
+
 
 function initNavigation() {
   const toggle = $("#menu-toggle");
@@ -1354,17 +1511,17 @@ function initNavigation() {
   });
 }
 
-/* ---------------------------------------------------------
-   CARD RENDERING
---------------------------------------------------------- */
+ 
 
-/* ---------------------------------------------------------
-   HIGH-QUALITY EVENT ARTWORK
-   Ticketmaster: official provider artwork at its supplied quality.
-   Quicket: original 3840 x 2160 SVG poster, clearly not represented
-   as a provider photograph. The poster also replaces broken links.
-   SVG stays crisp at 4K (and larger) without external image assets.
---------------------------------------------------------- */
+
+
+ 
+
+
+
+
+
+
 function eventPosterSVG(item) {
   const palettes = {
     music: ["#171224", "#ad5367", "#ffcc8e"],
@@ -1375,7 +1532,7 @@ function eventPosterSVG(item) {
   };
   const [dark, medium, light] = palettes[item.category] || palettes.other;
   const clean = value => escapeHTML(String(value || ""));
-  // Create 3 readable title lines, without clipping long titles.
+   
   const words = String(item.title || "SIDEQUEST EVENT").split(/\s+/);
   const lines = [];
   for (const word of words) {
@@ -1418,7 +1575,7 @@ function eventPosterSVG(item) {
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
 }
 
-/* High-resolution 3840 x 2160 branded food artwork (not a restaurant photograph). */
+ 
 function restaurantPosterSVG(item) {
   const clean = value => escapeHTML(String(value || ""));
   const title = clean(item.title);
@@ -1498,8 +1655,8 @@ function cardHTML(item) {
   `;
 }
 
-// Even if Ticketmaster's image host blocks hotlinking, every event still
-// displays its own 4K vector poster; no broken-image icons remain.
+ 
+ 
 document.addEventListener("error", event => {
   const img = event.target;
   if (!(img instanceof HTMLImageElement)) return;
@@ -1527,9 +1684,9 @@ function renderCards(container, items, emptyTitle, emptyText) {
   container.innerHTML = items.map(item => item.type === "restaurant" ? foodCardHTML(item) : cardHTML(item)).join("");
 }
 
-/* ---------------------------------------------------------
-   SAVING AND REMOVING PLANS
---------------------------------------------------------- */
+ 
+
+
 
 function toggleSaved(id) {
   const item = getItemById(id);
@@ -1560,9 +1717,9 @@ function refreshCurrentPage() {
   if (page === "surprise") renderSurprise();
 }
 
-/* ---------------------------------------------------------
-   DEMO TICKET PURCHASE SYSTEM
---------------------------------------------------------- */
+ 
+
+
 
 function ensureTicketModal() {
   if ($("#ticket-modal")) return;
@@ -1990,9 +2147,9 @@ function printTicket() {
   printWindow.document.close();
 }
 
-/* ---------------------------------------------------------
-   GLOBAL CARD AND TICKET BUTTON EVENTS
---------------------------------------------------------- */
+ 
+
+
 
 document.addEventListener("click", event => {
   const target = event.target;
@@ -2024,9 +2181,9 @@ document.addEventListener("click", event => {
   }
 });
 
-/* ---------------------------------------------------------
-   HOME PAGE
---------------------------------------------------------- */
+ 
+
+
 
 function renderHome() {
   const root = $("#app-content");
@@ -2097,14 +2254,14 @@ function renderHome() {
           <div class="hero-kicker"></div>
 
           <h1>
-            <span>What are</span>
-            <span>we up to</span>
-            <span>today?</span>
+            <span>Brighter</span>
+            <span>Days</span>
+            <span>Ahead</span>
           </h1>
 
           <p>
             Find verified South African events from Ticketmaster and Quicket.
-            Book directly with the official ticket provider.
+            Book directly with the official ticket provider, and keep an eye on the weather right here.
           </p>
 
           <form class="home-search" id="home-search">
@@ -2158,6 +2315,8 @@ function renderHome() {
         <span></span>
         <span></span>
       </div>
+
+      ${sidequestWeatherHTML("Johannesburg", "home")}
 
       <section class="home-categories">
 
@@ -2240,9 +2399,9 @@ function renderHome() {
   updateMusicUI();
 }
 
-/* ---------------------------------------------------------
-   HERO VIDEO
---------------------------------------------------------- */
+ 
+
+
 
 function initHeroVideo() {
   const video = $("#home-video");
@@ -2252,7 +2411,7 @@ function initHeroVideo() {
 
   video.muted = true;
   video.defaultMuted = true;
-  // Keep the chosen volume ready for the remote; mute controls initial autoplay.
+   
   video.volume = 0.6;
   video.loop = true;
   video.autoplay = true;
@@ -2300,12 +2459,12 @@ function initHeroVideo() {
 }
 
 
-/* ---------------------------------------------------------
-   INTERACTIVE HOME AD — the TV behaves like a channel switcher.
-   It seeks within the visitor's actual ad footage; no demo content.
-   GSAP supplies a short physical TV-switch movement and on-screen
-   channel transition. Controls work without GSAP too.
---------------------------------------------------------- */
+ 
+
+
+
+
+
 function initSideQuestAdControls() {
   const video = document.querySelector('body[data-page="home"] #home-video');
   const tv = document.getElementById('sq-tv-set');
@@ -2386,7 +2545,7 @@ function initSideQuestAdControls() {
   replay.addEventListener('click', () => {
     seekTo(0); chapter=0; play(); updateRemote(); switchEffect();
   });
-  // Ad audio controls are independent of the existing site's background music.
+   
   mute.addEventListener('click', () => {
     video.muted=!video.muted;
     if (!video.muted) {
@@ -2414,7 +2573,7 @@ function initSideQuestAdControls() {
   if (!reduced) initialiseGSAP().then(() => {
     if (!window.gsap || !tv.isConnected) return;
     const gsap=window.gsap;
-    // This is a short physical TV switch-on, not a looping distraction.
+     
     gsap.timeline()
       .from(tv, {y:55, rotation:-4, scale:.90, opacity:0, duration:1.05, ease:'back.out(1.4)'})
       .from('.sq-tv-remote', {y:26, opacity:0, duration:.55, ease:'power2.out'}, '-=.45')
@@ -2422,15 +2581,15 @@ function initSideQuestAdControls() {
   });
 }
 
-/* ---------------------------------------------------------
-   EVENTS PAGE
---------------------------------------------------------- */
+ 
+
+
 
 function renderEvents() {
   const root = $("#app-content");
   if (!root) return;
 
-  // Build the dropdowns from the actual listings, so no city is omitted.
+   
   const cities = [...new Set(allEvents.map(item => item.city).filter(Boolean))]
     .sort((a,b) => a.localeCompare(b));
   const categories = [...new Set(allEvents.map(item => item.category).filter(Boolean))]
@@ -2442,6 +2601,7 @@ function renderEvents() {
       <div class="eyebrow"><span></span><span> </span></div>
       <h1 class="page-title">Your next greatest SideQuest awaits...</h1>
       <p class="page-intro">Browse ${allEvents.length} </p>
+      ${sidequestWeatherHTML("Johannesburg", "events")}
       <div class="toolbar">
         <input id="event-search" type="search" placeholder="Search events, performers or venues..." aria-label="Search events">
         <select id="event-source" aria-label="Filter by ticket provider">
@@ -2498,7 +2658,7 @@ function renderEvents() {
   updateEventResults();
 }
 
-// Avoid UTC shifting South African event dates by parsing the calendar day locally.
+ 
 function eventLocalDay(value) {
   if (!value) return null;
   const day = new Date(`${String(value).slice(0,10)}T12:00:00`);
@@ -2558,9 +2718,9 @@ function updateEventResults() {
   window.dispatchEvent(new CustomEvent("sidequest:cards-updated"));
 }
 
-/* ---------------------------------------------------------
-   FOOD PAGE
---------------------------------------------------------- */
+ 
+
+
 
 function renderFood() {
   const root = $("#app-content");
@@ -2573,6 +2733,7 @@ function renderFood() {
       <div class="eyebrow"><span></span><span></span></div>
       <h1 class="page-title">Find your next fav place for a chat with your homies</h1>
       <p class="page-intro">Discover ${allRestaurants.length} real Johannesburg restaurants, cafés and dining spots with official Dineplan pages. Choose your spot, save it for later, then check real availability and book directly on Dineplan.</p>
+      ${sidequestWeatherHTML("Johannesburg", "food")}
       <div class="toolbar" role="search" aria-label="Filter restaurants">
         <input id="food-search" type="search" placeholder="Search restaurants or neighbourhoods..." aria-label="Search restaurants">
         <select id="food-area" aria-label="Filter by neighbourhood">
@@ -2631,12 +2792,12 @@ function updateFoodResults() {
   window.dispatchEvent(new CustomEvent("sidequest:cards-updated"));
 }
 
-/* ---------------------------------------------------------
-   SAVED PLANS PAGE
---------------------------------------------------------- */
+ 
 
-/* SAVED PLANS — a small, interactive planning desk.
-   The content and actions still work when GSAP isn't available. */
+
+
+ 
+
 let savedMotionRun = 0;
 let savedShuffleTimeline = null;
 
@@ -2756,7 +2917,7 @@ function chooseSavedPlan() {
     }
     result.querySelector('.saved-picked-full')?.scrollIntoView?.({block:'nearest', behavior: sidequestReducedMotion() ? 'instant' : 'smooth'});
   };
-  // Three genuine saved photos become a little fan of playing cards.
+   
   const deck = Array.from({length: Math.min(3, Math.max(1, saved.length))}, (_, i) => saved[(i + Math.floor(Math.random() * saved.length)) % saved.length]);
   result.innerHTML = `<div class="saved-shuffle-deck" aria-label="Shuffling your saved plans">${deck.map((item, i) => {
     const fallback = item.type === 'restaurant' ? restaurantPosterSVG(item) : eventPosterSVG(item);
@@ -2903,9 +3064,9 @@ function clearSavedPlans() {
   notify("Your saved plans have been cleared.");
 }
 
-/* ---------------------------------------------------------
-   SAVED TICKET BUTTON EVENT
---------------------------------------------------------- */
+ 
+
+
 
 document.addEventListener("click", event => {
   const target = event.target;
@@ -2919,11 +3080,11 @@ document.addEventListener("click", event => {
   }
 });
 
-/* ---------------------------------------------------------
-   SURPRISE ME — THE LOGO IS THE BUTTON
-   Two simple decks: events and food. GSAP shuffles three
-   real image cards before landing on a complete listing.
---------------------------------------------------------- */
+ 
+
+
+
+
 const surpriseBusy = {event: false, restaurant: false};
 function surpriseOptions(kind) {
   const items = kind === "event" ? EVENTS : RESTAURANTS;
@@ -3000,7 +3161,7 @@ async function chooseSurpriseKind(kind) {
   if (!window.gsap || !target.isConnected) { finish(); return; }
   const gsap = window.gsap;
   const others = Array.from({length:3},()=>items[Math.floor(Math.random()*items.length)]);
-  // Each shuffle card uses the REAL listing image, plus its honest fallback.
+   
   target.innerHTML = `<div class="sq-shuffle-deck" aria-hidden="true">${others.map((item,index)=>{
     const art=surpriseImage(item);
     return `<div class="sq-playing-card" data-deck-index="${index}"><div class="sq-playing-image"><img src="${escapeHTML(art.src)}" data-fallback="${escapeHTML(art.fallback)}" alt="" decoding="async"></div><strong>${escapeHTML(item.title)}</strong></div>`;
@@ -3017,11 +3178,11 @@ async function chooseSurpriseKind(kind) {
   tl.to(cards,{x:(i)=>(i-1)*260,y:55,rotation:(i)=>(i-1)*22,autoAlpha:0,duration:.45,stagger:.06,ease:'power3.in'});
 }
 
-/* ---------------------------------------------------------
-   ABOUT PAGE
---------------------------------------------------------- */
+ 
 
-/* ABOUT — a short scroll-based story, not a different visual identity. */
+
+
+ 
 function renderAbout() {
   const root = $("#app-content");
   if (!root) return;
@@ -3127,12 +3288,12 @@ function animateAboutPage() {
   });
 }
 
-/* ---------------------------------------------------------
-   BACKGROUND MUSIC (keeps playing across every page)
---------------------------------------------------------- */
+ 
 
-/* Each song lists the filename(s) to try, in order.
-   Put the three mp3 files in the SAME folder as index.html. */
+
+
+ 
+
 const MUSIC_TRACKS = [
   ["song-1.mp3", "DtMF, Best part (Loop) [8WQkJrlL95M].mp3"],
   ["song-2.mp3", "Matilda Mann - Inventing (Lyrics) _Love is just too weak of a word_.mp3"],
@@ -3165,7 +3326,7 @@ function writeMusicSession(patch) {
       JSON.stringify({ ...readMusicSession(), ...patch })
     );
   } catch {
-    /* storage unavailable: music still works, it just can't resume */
+     
   }
 }
 
@@ -3255,7 +3416,7 @@ function setMusicVolume(value) {
   try {
     localStorage.setItem(MUSIC_VOLUME_KEY, String(volume));
   } catch {
-    /* ignore */
+     
   }
 
   updateMusicUI();
@@ -3331,8 +3492,8 @@ function initMusic() {
 
   music.enabled = session.enabled !== false;
 
-  /* Refreshing picks a new random song. Moving between pages
-     carries on with the same song from where it was. */
+   
+
   const navigation = performance.getEntriesByType?.("navigation")?.[0];
   const isReload = navigation?.type === "reload";
   const isRecent = session.savedAt && Date.now() - session.savedAt < 20000;
@@ -3370,8 +3531,8 @@ function initMusic() {
     updateMusicUI();
   });
 
-  /* Browsers block sound until the visitor interacts with the page,
-     so if autoplay is refused, the first click, tap or key press starts it. */
+   
+
   const unlockEvents = ["pointerdown", "keydown", "touchstart"];
 
   function unlockMusic(event) {
@@ -3477,9 +3638,9 @@ function saveUsers(users) {
   }
 }
 
-/* Accounts are remembered in localStorage, but being signed in lasts for the
-   browser session (sessionStorage). Every new visit starts at the login page,
-   and moving between pages keeps you signed in. */
+ 
+
+
 function getCurrentUser() {
   try {
     const id = sessionStorage.getItem(CURRENT_USER_KEY);
@@ -3505,7 +3666,7 @@ function clearCurrentUser() {
   try {
     sessionStorage.removeItem(CURRENT_USER_KEY);
   } catch {
-    /* ignore */
+     
   }
 }
 
@@ -3527,8 +3688,8 @@ function createSalt() {
   }
 }
 
-/* Demo only: a salted hash so passwords are not kept as plain text.
-   This does not make browser storage secure. */
+ 
+
 async function hashPassword(password, salt) {
   const text = `${salt}:${password}`;
 
@@ -3544,7 +3705,7 @@ async function hashPassword(password, salt) {
         .join("");
     }
   } catch {
-    /* fall through to the simple hash */
+     
   }
 
   let hash = 5381;
@@ -3668,7 +3829,7 @@ function signOutAccount() {
   clearCurrentUser();
 }
 
-/* ----- Navigation: Account link on every page ----- */
+ 
 
 function updateAccountUI() {
   const user = getCurrentUser();
@@ -3718,10 +3879,10 @@ function initAccountNav() {
   updateAccountUI();
 }
 
-/* ----- Login gate: the first screen of the site ----- */
+ 
 
-/* The video behind the login. Uses the anime cooking video; swap to
-   HERO_VIDEO_SOURCES here if you would rather use the SideQuest ad. */
+ 
+
 const GATE_VIDEO_SOURCES = ABOUT_VIDEO_SOURCES;
 
 let gateOpener = null;
@@ -3746,7 +3907,7 @@ function getNextDestination() {
     : "./index.html";
 }
 
-/* Every page except the login page needs a signed-in visitor. */
+ 
 function enforceLoginGate() {
   if (isLoginPage()) return true;
   if (getCurrentUser()) return true;
@@ -3991,7 +4152,7 @@ function setAccountMode(mode, shouldFocus = false) {
       accountMode === "register" ? "#register" : "#signin"
     );
   } catch {
-    /* ignore */
+     
   }
 
   if (shouldFocus) {
@@ -4034,7 +4195,7 @@ function closeGateSheet() {
       window.location.pathname + window.location.search
     );
   } catch {
-    /* ignore */
+     
   }
 
   if (gateOpener && typeof gateOpener.focus === "function") {
@@ -4156,7 +4317,7 @@ function handleLogout() {
       window.location.pathname + window.location.search
     );
   } catch {
-    /* ignore */
+     
   }
 
   updateAccountUI();
@@ -4471,19 +4632,19 @@ function renderLogin() {
   updateMusicUI();
 }
 
-/* ---------------------------------------------------------
-   BRAND: LOGO NEXT TO EVERY "SideQuest." + BROWSER TAB ICON
---------------------------------------------------------- */
+ 
+
+
 
 function initBrandLogos() {
-  /* The full "TV switches on" intro plays once per visit, not on every page. */
+   
   try {
     if (!sessionStorage.getItem("sidequest-intro")) {
       document.documentElement.classList.add("intro");
       sessionStorage.setItem("sidequest-intro", "1");
     }
   } catch {
-    /* storage unavailable: skip the intro */
+     
   }
 
   document.querySelectorAll(".logo").forEach(logo => {
@@ -4547,10 +4708,10 @@ function initFavicon() {
 }
 
 
-/* ------------------------------------------------------------------
-   EVENT TICKET CARDS — WHITE DESIGN
-   This supplements existing styles.css without modifying other pages.
------------------------------------------------------------------- */
+ 
+
+
+
 (function addVerifiedEventStyles(){
   const css = `
     .verified-event-card { background: #fff !important; color: #171717 !important; border: 1px solid #e8e7e4 !important; box-shadow: 0 9px 26px rgba(0,0,0,.12); border-radius: 3px; }
@@ -4576,16 +4737,16 @@ function initFavicon() {
   const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el);
 })();
 
-/* =========================================================
-   SIDEQUEST — GSAP SHOWCASE
-   Three clearly visible, purposeful GSAP motion systems:
-   1. Timeline: dramatic brand logo and entrance choreography.
-   2. ScrollTrigger: staggered ticket / restaurant arrivals and hero parallax.
-   3. Draggable: large floating login TV with keyboard controls.
-   Bonus: GSAP card/image hover and logo hover interactions.
-   If GSAP is unavailable or reduced motion is requested, all
-   page content and controls remain usable without animation.
-   ========================================================= */
+ 
+
+
+
+
+
+
+
+
+
 let gsapReady = null;
 const sidequestReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -4620,7 +4781,7 @@ function initialiseGSAP() {
       document.documentElement.classList.add("gsap-ready", "sq-motion-enabled");
       const isSmall = window.matchMedia("(max-width: 760px)").matches;
 
-      /* GSAP TIMELINE — a branded intro, with logo spin + overshoot. */
+       
       const logo = document.querySelector(".site-header .logo-mark, .gate-logo .logo-mark");
       const logoWord = document.querySelector(".site-header .logo-word, .gate-logo .logo-word");
       const heading = document.querySelector(".home-copy h1, .gate-title, .page-title");
@@ -4647,7 +4808,7 @@ function initialiseGSAP() {
         { autoAlpha: 0, y: -25 },
         { autoAlpha: 1, y: 0, duration: .7 }, .9);
 
-      /* Playful but clear branding movement on hover. Clicking navigates as usual. */
+       
       document.querySelectorAll(".site-header .logo-mark, .site-footer .logo-mark, .gate-logo .logo-mark")
         .forEach(mark => {
           const holder = mark.closest("a") || mark;
@@ -4659,13 +4820,13 @@ function initialiseGSAP() {
           });
         });
 
-      /* SCROLLTRIGGER — strong staggered entrance for every real listing. */
+       
       function animateCards() {
         const cards = Array.from(document.querySelectorAll(".result-grid .result-card"))
           .filter(card => !card.dataset.sqMotionReady);
         if (!cards.length) return;
         cards.forEach(card => card.dataset.sqMotionReady = "true");
-        // Cards are grouped into rows so filtering always gets a fresh motion sequence.
+         
         const rowSize = isSmall ? 1 : window.matchMedia("(max-width: 1000px)").matches ? 2 : 3;
         for (let i = 0; i < cards.length; i += rowSize) {
           const row = cards.slice(i, i + rowSize);
@@ -4681,7 +4842,7 @@ function initialiseGSAP() {
         cards.forEach(card => {
           const img = card.querySelector(".event-image img");
           const body = card.querySelector(".card-body");
-          // GSAP-powered microinteraction is intentionally limited to hover devices.
+           
           if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
           card.addEventListener("pointerenter", () => {
             gsap.to(card, { y: -13, rotation: .6, scale: 1.02, duration: .35, ease: "power3.out", overwrite: "auto" });
@@ -4699,7 +4860,7 @@ function initialiseGSAP() {
       animateCards();
       window.addEventListener("sidequest:cards-updated", animateCards);
 
-      /* Additional ScrollTrigger narrative: the main feature image moves on scroll. */
+       
       const heroVisual = document.querySelector(".home-visual");
       if (heroVisual) {
         gsap.fromTo(heroVisual,
@@ -4716,7 +4877,7 @@ function initialiseGSAP() {
               scrollTrigger: { trigger: section, start: "top 85%", once: true } });
         });
 
-      /* DRAGGABLE — the large floating login logo, including keyboard control. */
+       
       const tv = document.querySelector(".gate-hero-tv");
       const gate = document.querySelector(".gate");
       if (tv && gate) {
@@ -4756,9 +4917,9 @@ function initialiseGSAP() {
   return gsapReady;
 }
 
-/* ---------------------------------------------------------
-   STARTUP
---------------------------------------------------------- */
+ 
+
+
 
 async function startSideQuest() {
   if (!enforceLoginGate()) return;
@@ -4811,13 +4972,14 @@ async function startSideQuest() {
 
   updateMusicUI();
   window.dispatchEvent(new CustomEvent("sidequest:page-rendered"));
+  initialiseSidequestWeather();
   initialiseGSAP();
 }
 
-/* Hide and redirect straight away if someone isn't signed in. */
+ 
 enforceLoginGate();
 
-/* Pressing Back after logging out must not reveal a protected page. */
+ 
 window.addEventListener("pageshow", event => {
   if (event.persisted) enforceLoginGate();
 });
