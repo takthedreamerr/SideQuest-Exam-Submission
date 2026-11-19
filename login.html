@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#550608">
+  <meta name="description" content="Sign in or join SideQuest to save plans and explore more.">
+  <title>Welcome — SideQuest.</title>
+  <link rel="icon" type="image/png" href="./website_logo.png">
+  <link rel="apple-touch-icon" href="./website_logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Herr+Von+Muellerhoff&family=Inter:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>try{if(!sessionStorage.getItem("sidequest-intro")){document.documentElement.classList.add("intro")}}catch(e){}</script>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./api.js" defer></script>
+  <script src="./app.js" defer></script>
+  <script src="./auth.js" defer></script>
+</head>
+<body data-page="login">
+  <a class="skip-link" href="#app-content">Skip to main content</a>
+
+  <main id="app-content" tabindex="-1"></main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p style="padding:24px;color:#fff6b9">SideQuest needs JavaScript enabled to display its content.</p></noscript>
+</body>
+</html>
